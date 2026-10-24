@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { crisisClinics, FEED, patients, quietClinics } from "@shared/world.js";
-import { approvePlan, runRelay } from "./api";
+import { useEffect, useState } from "react";
+import { crisisClinics, FEED, isReceiving, patients, quietClinics } from "@shared/world.js";
+import { approvePlan, getJSON, runRelay } from "./api";
 import { Board } from "./Board";
 
 const DEFAULT_NOTES = FEED.map((item) => `${item.at} ${item.source}: ${item.text}`).join("\n");
+
+// isReceiving() drops any clinic whose generator fuel is below this many minutes.
+const MIN_GENERATOR_MINUTES = 120;
 
 export function Desk({ onFilm, onArch, onHome }) {
   const people = patients();
@@ -19,7 +22,20 @@ export function Desk({ onFilm, onArch, onHome }) {
   const [custom, setCustom] = useState(false);
   const [editor, setEditor] = useState(true);
   const [panel, setPanel] = useState("people");
+  const [health, setHealth] = useState(null);
   const clock = feed.length ? 2 * 3600 + 26 * 60 : 2 * 3600 + 14 * 60;
+
+  async function checkHealth() {
+    try {
+      setHealth(await getJSON("/api/health"));
+    } catch {
+      setHealth({ ok: false, message: "The Relay service is not answering." });
+    }
+  }
+
+  useEffect(() => {
+    checkHealth();
+  }, []);
 
   function loadFlood() {
     setClinics(crisisClinics());
@@ -149,6 +165,16 @@ export function Desk({ onFilm, onArch, onHome }) {
       <div className="topbar">
         <button className="text" onClick={onHome}>Relay</button>
         <div className="row">
+          <span className={`engine-pill ${health?.ok ? "live" : "fallback"}`} title={health?.ok ? health.modelId || "" : health?.message || ""}>
+            {health === null
+              ? "Checking Bedrock…"
+              : health.ok
+                ? "Bedrock live"
+                : "Bedrock offline · using safety rules"}
+          </span>
+          {health && !health.ok && (
+            <button className="btn ghost tiny" type="button" onClick={checkHealth}>Retry</button>
+          )}
           <button className="btn ghost" onClick={onArch}>Architecture</button>
           <button className="btn ghost" onClick={onFilm}>Film for video</button>
         </div>
@@ -202,42 +228,66 @@ export function Desk({ onFilm, onArch, onHome }) {
               placeholder="Example: Keep Patrick at Eastbank only if fuel allows. Prefer Main for wheelchair vans."
             />
           </div>
-          {clinics.map((clinic) => (
-            <div key={clinic.id} className="clinic-edit">
-              <strong>{clinic.short}</strong>
-              <label><input type="checkbox" checked={clinic.power} onChange={(event) => updateClinic(clinic.id, { power: event.target.checked })} /> Power</label>
-              <label><input type="checkbox" checked={clinic.water} onChange={(event) => updateClinic(clinic.id, { water: event.target.checked })} /> Water</label>
-              <label><input type="checkbox" checked={clinic.generator} onChange={(event) => updateClinic(clinic.id, { generator: event.target.checked, generatorMinutes: clinic.generatorMinutes || 40 })} /> Generator</label>
-              <label>
-                Fuel min
-                <input
-                  type="number"
-                  min="0"
-                  max="600"
-                  value={clinic.generatorMinutes}
-                  onChange={(event) => updateClinic(clinic.id, { generator: true, generatorMinutes: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                Open chairs
-                <input
-                  type="number"
-                  min="0"
-                  max="20"
-                  value={clinic.openChairs}
-                  onChange={(event) => updateClinic(clinic.id, { openChairs: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                Road
-                <select value={clinic.road} onChange={(event) => updateClinic(clinic.id, { road: event.target.value })}>
-                  <option value="clear">Clear</option>
-                  <option value="van-only">Vans only</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </label>
-            </div>
-          ))}
+          {clinics.map((clinic) => {
+            const receiving = isReceiving(clinic);
+            const lowFuel = clinic.generator && clinic.generatorMinutes < MIN_GENERATOR_MINUTES;
+            return (
+              <div key={clinic.id} className={`clinic-edit ${receiving ? "receiving" : "not-receiving"}`}>
+                <strong>{clinic.short}</strong>
+                <span className={`clinic-state ${receiving ? "ok" : "off"}`}>
+                  {receiving ? "Receiving" : "Not receiving"}
+                </span>
+                <label><input type="checkbox" checked={clinic.power} onChange={(event) => updateClinic(clinic.id, { power: event.target.checked })} /> Power</label>
+                <label><input type="checkbox" checked={clinic.water} onChange={(event) => updateClinic(clinic.id, { water: event.target.checked })} /> Water</label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={clinic.generator}
+                    onChange={(event) =>
+                      updateClinic(clinic.id, {
+                        generator: event.target.checked,
+                        generatorMinutes: event.target.checked ? clinic.generatorMinutes || MIN_GENERATOR_MINUTES : 0,
+                      })
+                    }
+                  /> Generator
+                </label>
+                <label className={clinic.generator ? "" : "disabled"}>
+                  Fuel min
+                  <input
+                    type="number"
+                    min="0"
+                    max="600"
+                    disabled={!clinic.generator}
+                    value={clinic.generator ? clinic.generatorMinutes : 0}
+                    onChange={(event) => updateClinic(clinic.id, { generatorMinutes: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  Open chairs
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={clinic.openChairs}
+                    onChange={(event) => updateClinic(clinic.id, { openChairs: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  Road
+                  <select value={clinic.road} onChange={(event) => updateClinic(clinic.id, { road: event.target.value })}>
+                    <option value="clear">Clear</option>
+                    <option value="van-only">Vans only</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </label>
+                {lowFuel && (
+                  <span className="clinic-hint">
+                    Generator fuel under {MIN_GENERATOR_MINUTES} min, so this clinic will not take patients.
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

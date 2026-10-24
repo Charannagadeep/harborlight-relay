@@ -133,6 +133,21 @@ const PEOPLE = [
   { id: "andre", name: "Andre Wallace", age: 58, hoursSince: 5, mobility: "ambulatory", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 22, window: "On the machine" },
   { id: "helencho", name: "Helen Cho", age: 64, hoursSince: 5, mobility: "wheelchair", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 16, window: "On the machine" },
   { id: "camille", name: "Camille Brooks", age: 49, hoursSince: 4, mobility: "ambulatory", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 11, window: "On the machine" },
+
+  // Main — healthy in the Tuesday flood. Darken Main in the editor to make these need placement.
+  { id: "nora", name: "Nora Whitfield", age: 71, hoursSince: 52, mobility: "wheelchair", homeClinic: "main", status: "due", minutesRemaining: null, window: "6:00 a.m." },
+  { id: "desmond", name: "Desmond Clark", age: 66, hoursSince: 50, mobility: "ambulatory", homeClinic: "main", status: "due", minutesRemaining: null, window: "6:00 a.m." },
+  { id: "priyam", name: "Priya Menon", age: 58, hoursSince: 45, mobility: "ambulatory", homeClinic: "main", status: "due", minutesRemaining: null, window: "6:30 a.m." },
+  { id: "walter", name: "Walter Boone", age: 79, hoursSince: 57, mobility: "wheelchair", homeClinic: "main", status: "due", minutesRemaining: null, window: "5:45 a.m." },
+
+  // North Ridge — healthy in the Tuesday flood. Darken North Ridge to exercise it.
+  { id: "elaine", name: "Elaine Foster", age: 73, hoursSince: 53, mobility: "wheelchair", homeClinic: "ridge", status: "due", minutesRemaining: null, window: "6:00 a.m." },
+  { id: "omar", name: "Omar Haddad", age: 62, hoursSince: 48, mobility: "ambulatory", homeClinic: "ridge", status: "due", minutesRemaining: null, window: "6:15 a.m." },
+  { id: "bianca", name: "Bianca Ferreira", age: 60, hoursSince: 46, mobility: "ambulatory", homeClinic: "ridge", status: "due", minutesRemaining: null, window: "6:30 a.m." },
+
+  // Cedar Grove — healthy in the Tuesday flood. Darken Cedar Grove (or set road closed) to exercise it.
+  { id: "teresa", name: "Teresa Vance", age: 75, hoursSince: 55, mobility: "wheelchair", homeClinic: "cedar", status: "due", minutesRemaining: null, window: "5:45 a.m." },
+  { id: "hank", name: "Hank Reyes", age: 64, hoursSince: 49, mobility: "ambulatory", homeClinic: "cedar", status: "due", minutesRemaining: null, window: "6:00 a.m." },
 ];
 
 export const FEED = [
@@ -215,6 +230,7 @@ export function transport() {
     vans: [
       { id: "van-2", name: "Wheelchair van 2", seats: 2, base: "ridge", ready: "now", readyOrder: 0 },
       { id: "van-1", name: "Wheelchair van 1", seats: 3, base: "main", ready: "2:31 a.m.", readyOrder: 1 },
+      { id: "van-3", name: "Wheelchair van 3", seats: 3, base: "cedar", ready: "2:40 a.m.", readyOrder: 2 },
     ],
     shuttle: "The clinic shuttle reaches only clinics whose road is clear.",
     shuttleReaches: ["main", "ridge"],

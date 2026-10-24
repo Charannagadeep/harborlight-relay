@@ -295,3 +295,47 @@ textarea { grid-column: 1 / -1; width: 100%; resize: vertical; }
   .film { height: auto; min-height: 100vh; }
   .monitor { height: auto; }
 }
+
+/* Desk: Bedrock engine status pill */
+.engine-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+}
+.engine-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.engine-pill.live { color: var(--safe); border-color: rgba(183, 199, 164, 0.5); }
+.engine-pill.live::before { background: var(--safe); }
+.engine-pill.fallback { color: var(--warn); border-color: rgba(226, 177, 90, 0.5); }
+.engine-pill.fallback::before { background: var(--warn); }
+
+/* Desk: clinic editor receiving state */
+.clinic-edit.not-receiving { border-color: rgba(224, 122, 98, 0.45); }
+.clinic-state {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.clinic-state.ok { color: var(--safe); border: 1px solid rgba(183, 199, 164, 0.5); }
+.clinic-state.off { color: var(--bad); border: 1px solid rgba(224, 122, 98, 0.5); }
+.clinic-edit label.disabled { opacity: 0.45; }
+.clinic-edit label.disabled input { cursor: not-allowed; }
+.clinic-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--warn);
+  line-height: 1.35;
+}
