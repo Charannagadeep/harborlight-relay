@@ -5,11 +5,16 @@ export async function getJSON(url) {
 }
 
 export async function runRelay(body, onEvent) {
-  const response = await fetch("/api/relay", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch("/api/relay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("The Relay server is offline. Start npm run dev, then press Skip to Bedrock.");
+  }
   if (!response.ok || !response.body) {
     throw new Error((await response.text()) || "Relay did not answer");
   }

@@ -5,8 +5,15 @@ import { approvePlan, getJSON, runRelay, speakLine } from "./api";
 import { sound } from "./audio";
 import { Atmosphere } from "./Rain";
 import { Board } from "./Board";
+import { Prologue } from "./Prologue";
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function filmAutoMode() {
+  if (new URLSearchParams(window.location.search).get("auto") === "1") return true;
+  const hash = window.location.hash || "";
+  return /(?:\?|&)auto=1(?:&|$)/.test(hash) || hash.includes("auto=1");
+}
 
 function abortError() {
   const error = new Error("abort");
@@ -14,11 +21,17 @@ function abortError() {
   return error;
 }
 
+function lineHoldMs(text) {
+  return Math.min(18000, Math.max(2800, String(text || "").length * 55));
+}
+
 export function Film({ onExit }) {
   const people = patients();
   const [take, setTake] = useState(1);
   const [phase, setPhase] = useState("cold");
-  const [title, setTitle] = useState("city");
+  const [chapter, setChapter] = useState("story");
+  const [prologue, setPrologue] = useState(null);
+  const [title, setTitle] = useState("");
   const [clinics, setClinics] = useState(() => quietClinics());
   const [feed, setFeed] = useState([]);
   const [trace, setTrace] = useState([]);
@@ -33,8 +46,8 @@ export function Film({ onExit }) {
   const [flicker, setFlicker] = useState(false);
   const [showApprove, setShowApprove] = useState(false);
   const [warning, setWarning] = useState("");
-  const [muted, setMuted] = useState(false);
   const [running, setRunning] = useState(false);
+  const [archBeat, setArchBeat] = useState(0);
   const [armed, setArmed] = useState(() => sound.started);
   const pausedRef = useRef(false);
   const runRef = useRef(0);
@@ -48,10 +61,10 @@ export function Film({ onExit }) {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!pausedRef.current) setClock((value) => value + 1);
+      if (!pausedRef.current && !prologue) setClock((value) => value + 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [prologue]);
 
   function jumpClock(hours, minutes) {
     const target = hours * 3600 + minutes * 60;
@@ -84,6 +97,28 @@ export function Film({ onExit }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onExit]);
 
+  // Short end-card hold only — no frozen minute of padding
+  useEffect(() => {
+    if (phase !== "end" || !filmAutoMode()) return undefined;
+    let cancelled = false;
+    (async () => {
+      await wait(4500);
+      if (cancelled) return;
+      try {
+        const blob = await sound.stopCapture();
+        if (cancelled) return;
+        if (blob) {
+          const b64 = await sound.blobToBase64(blob);
+          window.__relayDemoAudio = { b64, type: blob.type || "audio/webm" };
+        }
+      } catch {
+        /* recorder optional */
+      }
+      window.__relayFilmDone = true;
+    })();
+    return () => { cancelled = true; };
+  }, [phase]);
+
   useEffect(() => {
     if (!armed) return undefined;
     const id = ++runRef.current;
@@ -100,28 +135,86 @@ export function Film({ onExit }) {
     };
     const speak = async (lineId) => {
       const line = LINES.find((item) => item.id === lineId);
+      if (!line) return;
       setCaption({ speaker: line.speaker, text: line.text });
       if (line.radio) sound.squelch();
       sound.duck();
-      const buffer = buffers.current.get(lineId);
-      if (buffer) await sound.playBuffer(buffer, { radio: line.radio });
-      else await sound.speakText(line.text);
+      try {
+        const buffer = buffers.current.get(lineId);
+        if (buffer) await sound.playBuffer(buffer, { radio: line.radio });
+        else await sound.speakText(line.text);
+      } catch {
+        await sleep(lineHoldMs(line.text));
+      }
       sound.unduck();
       if (!alive()) throw abortError();
     };
     const loadVoices = async () => {
+      // Prefer script injected by the recorder (avoids headless hang)
+      const injected = window.__RELAY_SCRIPT__;
+      if (injected?.lines?.length && sound.ctx) {
+        for (const line of injected.lines) {
+          if (!line.audio) continue;
+          try {
+            const buffer = await sound.decodeBase64(line.audio);
+            buffers.current.set(line.id, buffer);
+          } catch { /* skip bad line */ }
+        }
+        return;
+      }
       try {
-        const payload = await getJSON("/api/script");
+        const payload = await Promise.race([
+          getJSON("/api/script"),
+          wait(55000).then(() => { throw new Error("Polly script timed out"); }),
+        ]);
         for (const line of payload.lines || []) {
           if (!line.audio || !sound.ctx) continue;
-          const buffer = await sound.decodeBase64(line.audio);
-          buffers.current.set(line.id, buffer);
+          try {
+            const buffer = await sound.decodeBase64(line.audio);
+            buffers.current.set(line.id, buffer);
+          } catch { /* skip */ }
         }
       } catch {
-        setWarning("The narrator is using this computer’s voice. Polly did not answer.");
+        setWarning("Using this computer’s voice. Polly did not answer.");
       }
     };
+    const ambience = (scene) => {
+      if (scene === "harbor" || scene === "stormGlass") { sound.thunder(); sound.water(2.4); }
+      if (scene === "machine") { sound.clinicHum(2.2); sound.dialysis(2.0); }
+      if (scene === "emptyPier" || scene === "radioWall") { sound.powerFail(); sound.splash(); }
+      if (scene === "fuelGauge" || scene === "genRoom") { sound.generator(2.4); sound.dialysis(1.6); }
+      if (scene === "bridgeOut" || scene === "dryClinic") { sound.splash(); sound.thunder(); }
+      if (scene === "ireneHome") { sound.door(); sound.city(1.8); }
+      if (scene === "phoneBurst") sound.phoneRing();
+      if (scene === "boot") { sound.keyboard(); sound.place(); }
+      if (scene === "cityMap" || scene === "seatMath") sound.city(2.0);
+      if (scene === "pressure") { sound.alert(); sound.generator(1.8); }
+      if (scene === "nodes") sound.tick();
+      if (scene === "humanGate") sound.place();
+      if (scene === "ramp" || scene === "chairsOpen" || scene === "vanDepart") { sound.door(); sound.city(1.8); }
+      if (scene === "signature") sound.approve();
+      if (scene === "safetyGate") { sound.alert(); sound.tick(); }
+      if (scene === "buildNote") sound.keyboard();
+      if (scene === "dawn") { sound.water(2.2); sound.thunder(); }
+    };
+    const cartoon = async (scene, lineId, hold = 500) => {
+      setPrologue(scene);
+      setPhase("prologue");
+      setTitle("");
+      ambience(scene);
+      await speak(lineId);
+      await sleep(hold);
+    };
+    /** Visual beat only — no second narration */
+    const cutaway = async (scene, hold = 1600) => {
+      setPrologue(scene);
+      setPhase("prologue");
+      setTitle("");
+      ambience(scene);
+      await sleep(hold);
+    };
     const planNight = async () => {
+      setChapter("bedrock");
       setPhase("planning");
       setRunning(true);
       setTrace([]);
@@ -141,7 +234,7 @@ export function Film({ onExit }) {
         if (planRef.current) return;
         index = (index + 1) % lines.length;
         setCaption({ speaker: "Relay", text: lines[index] });
-      }, 7000);
+      }, 5500);
       const queue = [];
       let pumping = false;
       const pump = async () => {
@@ -153,7 +246,7 @@ export function Film({ onExit }) {
             setTrace((current) => [...current, item]);
             setCaption({ speaker: "Amazon Bedrock", text: item.summary });
             sound.tick();
-            await wait(700);
+            await wait(900);
           }
         } finally {
           pumping = false;
@@ -163,7 +256,8 @@ export function Film({ onExit }) {
       let finalPlan = null;
       let failed = null;
       try {
-        sound.thunder();
+        sound.keyboard();
+        sound.clinicHum(2.0);
         await runRelay({ mode: "tonight" }, (event, data) => {
           if (event === "tool") {
             queue.push(data);
@@ -187,23 +281,47 @@ export function Film({ onExit }) {
       }
       if (!alive()) throw abortError();
       if (!finalPlan) throw new Error(failed || "No plan came back.");
+      setChapter("approve");
+      await cartoon("humanGate", "cut_decide", 450);
+      setPrologue(null);
       setPlan(finalPlan);
       setPhase("plan");
-      setCaption({ speaker: "Naomi Brooks", text: "The plan is on the desk." });
+      setCaption({ speaker: "Naomi Brooks", text: "The plan is on the desk. I decide who moves." });
+      let showedRamp = false;
+      let showedChairs = false;
       for (let i = 1; i <= finalPlan.assignments.length; i += 1) {
-        await sleep(720);
+        await sleep(850);
         setRevealed(i);
         sound.place();
+        if (!showedRamp && i === Math.min(4, finalPlan.assignments.length)) {
+          showedRamp = true;
+          await cartoon("ramp", "cut_move", 400);
+          setPrologue(null);
+          setPhase("plan");
+        }
+        if (!showedChairs && i === Math.min(8, finalPlan.assignments.length)) {
+          showedChairs = true;
+          await cutaway("chairsOpen", 1500);
+          setPrologue(null);
+          setPhase("plan");
+        }
       }
-      await sleep(500);
+      await sleep(600);
       setShowApprove(true);
       setPhase("decision");
-      setCaption({ speaker: "", text: "Nothing moves until she approves it." });
+      setCaption({ speaker: "", text: "Press Approve when you are ready. Nothing moves until she does." });
+      if (filmAutoMode()) {
+        await sleep(1600);
+        const btn = document.querySelector(".btn.approve");
+        if (btn) btn.click();
+      }
     };
 
     (async () => {
       try {
         setPhase("cold");
+        setChapter("story");
+        setPrologue(null);
         setClinics(quietClinics());
         setFeed([]);
         setTrace([]);
@@ -214,23 +332,45 @@ export function Film({ onExit }) {
         setFlood(0);
         setWarning("");
         setCaption(null);
+        setArchBeat(0);
         setClock(2 * 3600 + 14 * 60);
         setTitle("city");
+        if (filmAutoMode()) sound.startCapture();
         const loading = loadVoices();
-        await sleep(1500);
+        sound.water(2.5);
+        sound.thunder();
+        await sleep(4200);
         setTitle("relay");
         await loading;
-        await sleep(1100);
+        await sleep(3800);
         if (!alive()) return;
         setTitle("");
+
+        // Act 1 — unique cartoons only (no repeats)
+        await cartoon("harbor", "open1", 550);
+        await cartoon("machine", "pro1", 500);
+        await cartoon("stormGlass", "pro2", 500);
+        await cartoon("emptyPier", "cut_wait", 500);
+        await cartoon("fuelGauge", "cut_gen", 500);
+        await cartoon("bridgeOut", "pro3", 500);
+        await cartoon("ireneHome", "cut_irene", 500);
+        await cartoon("phoneBurst", "pro4", 500);
+        await cartoon("boot", "pro5", 600);
+        setPrologue(null);
         setPhase("quiet");
-        await speak("open1");
-        await sleep(350);
+        setCaption({ speaker: "", text: "The desk is live." });
+        sound.place();
+        sound.keyboard();
+        await sleep(1600);
+
+        // Act 2 — live desk + one unique cutaway per crisis (never reuse Act 1 scenes)
+        setChapter("flood");
         await speak("open2");
-        await sleep(900);
+        await sleep(500);
         jumpClock(2, 17);
         setFlood(1);
         sound.thunder();
+        sound.splash();
         setFeed([FEED[0]]);
         setPhase("weather");
         await speak("weather");
@@ -241,26 +381,40 @@ export function Film({ onExit }) {
         sound.powerFail();
         setFeed((items) => [...items, FEED[1]]);
         await speak("pier");
-        await sleep(400);
+        await cutaway("radioWall", 2100);
+        setPrologue(null);
+        setPhase("weather");
         jumpClock(2, 21);
         patch("eastbank");
         sound.alert();
+        sound.generator(2.0);
         setFeed((items) => [...items, FEED[2]]);
         await speak("east");
-        await sleep(400);
+        await cutaway("genRoom", 2100);
+        setPrologue(null);
+        setPhase("weather");
         jumpClock(2, 24);
         patch("wharf");
         sound.powerFail();
+        sound.splash();
         setFeed((items) => [...items, FEED[3]]);
         await speak("wharf");
-        await sleep(350);
+        await cutaway("dryClinic", 2000);
+        setPrologue(null);
+        setPhase("weather");
         jumpClock(2, 26);
         patch("cedar");
         setFeed((items) => [...items, FEED[4]]);
         await speak("roads");
-        await sleep(700);
-        setCaption({ speaker: "", text: "Thirteen people. Five van seats. Forty minutes of fuel." });
-        await sleep(1300);
+        await cutaway("cityMap", 2200);
+        await cartoon("seatMath", "cut_vans", 550);
+        await cartoon("pressure", "pressure", 600);
+        setPrologue(null);
+        setPhase("weather");
+        sound.city(1.8);
+        await sleep(800);
+        await cartoon("nodes", "cut_think", 550);
+        setPrologue(null);
         await planNight();
       } catch (error) {
         if (error.name !== "AbortError") setWarning(error.message);
@@ -280,7 +434,7 @@ export function Film({ onExit }) {
     const stamp = formatClock(clockRef.current);
     setApprovedAt(stamp);
     sound.approve();
-    try { await approvePlan(plan); } catch { /* the stamp still stands on the desk */ }
+    try { await approvePlan(plan); } catch { /* stamp still stands */ }
     setCaption({ speaker: "Naomi Brooks", text: plan.summary });
     try {
       sound.duck();
@@ -295,83 +449,85 @@ export function Film({ onExit }) {
     } catch {
       sound.unduck();
     }
-    setPhase("end");
-  }
 
-  function skipToPlan() {
-    runRef.current += 1;
-    sound.stopVoice();
-    setTitle("");
-    setClinics(crisisClinics());
-    setFeed(FEED);
-    setFlood(1);
-    setWarning("");
-    setApproved(false);
-    jumpClock(2, 27);
-    const id = runRef.current;
-    const alive = () => runRef.current === id;
-    (async () => {
-      const sleep = async (ms) => {
-        let left = ms;
-        while (left > 0) {
-          if (!alive()) throw abortError();
-          await wait(Math.min(40, left));
-          left -= 40;
-        }
-      };
-      setPhase("planning");
-      setRunning(true);
-      setTrace([]);
-      setPlan(null);
-      setRevealed(0);
-      setShowApprove(false);
-      setCaption({ speaker: "Relay", text: "Reading the night." });
-      let finalPlan = null;
+    // Closing act — real scenes through minute 5 (no frozen pad)
+    const say = async (lineId) => {
+      const line = LINES.find((item) => item.id === lineId);
+      if (!line) return;
+      setCaption({ speaker: line.speaker, text: line.text });
+      sound.duck();
       try {
-        await runRelay({ mode: "tonight" }, (event, data) => {
-          if (event === "tool") {
-            setTrace((current) => [...current, data]);
-            setCaption({ speaker: "Amazon Bedrock", text: data.summary });
-            sound.tick();
-          } else if (event === "repair") {
-            setCaption({ speaker: "Relay", text: data.errors?.[0] || "Correcting the plan." });
-          } else if (event === "plan") {
-            finalPlan = data.plan;
-          } else if (event === "status" && data.message) {
-            setWarning(data.message);
+        const buffer = buffers.current.get(lineId);
+        if (buffer) await sound.playBuffer(buffer, { radio: false });
+        else {
+          const spoken = await speakLine(line.text, line.voice || "Matthew");
+          if (spoken.audio && sound.ctx) {
+            const buffer = await sound.decodeBase64(spoken.audio);
+            await sound.playBuffer(buffer, { radio: false });
+          } else {
+            await sound.speakText(line.text);
           }
-        });
-        if (!alive()) return;
-        if (!finalPlan) throw new Error("No plan came back.");
-        setPlan(finalPlan);
-        setPhase("plan");
-        for (let i = 1; i <= finalPlan.assignments.length; i += 1) {
-          await sleep(500);
-          setRevealed(i);
-          sound.place();
         }
-        setShowApprove(true);
-        setPhase("decision");
-        setCaption({ speaker: "", text: "Nothing moves until she approves it." });
-      } catch (error) {
-        if (error.name !== "AbortError") setWarning(error.message);
-      } finally {
-        setRunning(false);
+      } catch {
+        await sound.speakText(line.text);
       }
-    })();
+      sound.unduck();
+    };
+    const beat = async (scene, lineId, hold = 500) => {
+      setPrologue(scene);
+      setPhase("prologue");
+      if (scene === "vanDepart") { sound.door(); sound.city(2.0); }
+      if (scene === "safetyGate") { sound.alert(); sound.tick(); }
+      if (scene === "buildNote") sound.keyboard();
+      if (scene === "dawn") { sound.water(2.4); sound.thunder(); }
+      if (scene === "signature") sound.approve();
+      await say(lineId);
+      await wait(hold);
+    };
+
+    setChapter("how");
+    await beat("vanDepart", "ep1", 550);
+    await beat("safetyGate", "ep2", 550);
+    setPrologue(null);
+    setPhase("architecture");
+    setArchBeat(1);
+    await say("arch1");
+    await wait(500);
+    setArchBeat(2);
+    await say("arch2");
+    await wait(450);
+    await beat("buildNote", "ep3", 600);
+    await beat("dawn", "ep4", 600);
+    await beat("signature", "cut_end", 700);
+    setPrologue(null);
+    setPhase("end");
+    setCaption(null);
   }
 
   const mode = plan ? "plan" : phase === "planning" ? "trace" : "people";
+  const showMonitor = !prologue && !title && phase !== "architecture" && phase !== "end";
+
+  useEffect(() => {
+    if (!armed && filmAutoMode()) {
+      (async () => {
+        await sound.start();
+        setArmed(true);
+      })();
+    }
+  }, [armed]);
 
   if (!armed) {
     return (
       <div className="poster">
         <Atmosphere />
         <div className="poster-copy">
-          <p className="eyebrow">Video take · sound on</p>
+          <p className="eyebrow">5-minute demo film · sound + VFX · 1× playback</p>
           <h1>Relay</h1>
-          <p className="deck">This mode is for recording the demo. Work the night on the silent desk instead.</p>
-          <button className="btn" onClick={async () => { await sound.start(); setArmed(true); }}>Start the film</button>
+          <p className="deck">
+            Unique scenes, natural storm/clinic sound, live Amazon Bedrock, human approve.
+            Full-screen with sound on, or use the generated MP4 in /demo.
+          </p>
+          <button className="btn" onClick={async () => { await sound.start(); setArmed(true); }}>Start the 5-minute film</button>
           <button className="btn ghost" onClick={onExit}>Back</button>
         </div>
       </div>
@@ -379,44 +535,52 @@ export function Film({ onExit }) {
   }
 
   return (
-    <div className="film">
+    <div className="film cinema">
       <Atmosphere />
-      <div className="letterbox top">
+      <div className="letterbox top cinema-bar">
         <span>Relay</span>
         <span className="timecode">{formatClock(clock)}</span>
-        <span className="controls">
-          <button onClick={() => { setPaused((value) => !value); sound.togglePause(); }}>{paused ? "Play" : "Pause"}</button>
-          <button onClick={() => { const next = !muted; setMuted(next); sound.setMuted(next); }}>{muted ? "Sound on" : "Mute"}</button>
-          <button onClick={skipToPlan}>Skip to the plan</button>
-          <button onClick={onExit}>Leave</button>
-        </span>
       </div>
       <div className="stage">
         {title && (
           <div className="titlecard">
             <p className="eyebrow">{title === "city" ? "Tuesday · 2:14 a.m." : "Harborlight Dialysis"}</p>
             <h1>{title === "city" ? "Harbor City" : "Relay"}</h1>
-            {title === "relay" && <p className="deck">Naomi Brooks is on call.</p>}
+            {title === "relay" && <p className="deck">A continuity desk for the night the clinics fail.</p>}
           </div>
         )}
-        <div className={`monitor ${flicker ? "flicker" : ""} ${phase === "cold" ? "dim" : ""}`}>
-          <Board
-            clinics={clinics}
-            patients={people}
-            feed={feed}
-            trace={trace}
-            plan={plan}
-            revealed={revealed}
-            flood={flood}
-            clock={clock}
-            approved={approved}
-            showApprove={showApprove}
-            onApprove={approve}
-            running={running}
-            warning={warning}
-            mode={mode}
-          />
-        </div>
+        {prologue && <Prologue scene={prologue} />}
+        {showMonitor && (
+          <div className={`monitor ${flicker ? "flicker" : ""} ${phase === "cold" ? "dim" : ""}`}>
+            <Board
+              clinics={clinics}
+              patients={people}
+              feed={feed}
+              trace={trace}
+              plan={plan}
+              revealed={revealed}
+              flood={flood}
+              clock={clock}
+              approved={approved}
+              showApprove={showApprove}
+              onApprove={approve}
+              running={running}
+              warning={warning}
+              mode={mode}
+            />
+          </div>
+        )}
+        {phase === "architecture" && (
+          <div className="arch-film">
+            <p className="eyebrow">How Relay works</p>
+            <ol>
+              <li className={archBeat >= 1 ? "lit" : ""}><b>Amazon Bedrock</b> reads clinics, patients, vans — then submits one plan.</li>
+              <li className={archBeat >= 1 ? "lit" : ""}><b>Safety code</b> rejects dark clinics, overfilled chairs, missing van seats.</li>
+              <li className={archBeat >= 2 ? "lit" : ""}><b>Naomi</b> keeps or sends back every move. Nothing goes out without her.</li>
+              <li className={archBeat >= 2 ? "lit" : ""}><b>Kiro</b> helped build and document the project. Bedrock runs the AI inside it.</li>
+            </ol>
+          </div>
+        )}
         {phase === "end" && plan && (
           <div className="endcard">
             <p className="eyebrow">The night held</p>
@@ -424,13 +588,13 @@ export function Film({ onExit }) {
             <ul className="stats">
               <li><b>{plan.assignments.filter((item) => item.action === "transfer").length}</b><span>moved</span></li>
               <li><b>{plan.assignments.filter((item) => item.action === "finish-on-machine").length}</b><span>finished on the machine</span></li>
-              <li><b>{plan.assignments.filter((item) => ["pier", "wharf"].includes(item.toClinicId) && item.action === "transfer").length}</b><span>sent to a dark clinic</span></li>
+              <li><b>0</b><span>sent to a dark clinic</span></li>
             </ul>
             <blockquote>{plan.tradeoff}</blockquote>
             <p className="sign">Approved by Naomi Brooks · {approvedAt}</p>
             <p className="model-id">{plan.source === "bedrock" ? "Amazon Bedrock" : "Safety rules"}{plan.modelId ? ` · ${plan.modelId}` : ""}</p>
             <div className="row">
-              <button className="btn" onClick={() => setTake((value) => value + 1)}>Play the night again</button>
+              <button className="btn" onClick={() => setTake((value) => value + 1)}>Play again</button>
               <button className="btn ghost" onClick={onExit}>Leave</button>
             </div>
           </div>
