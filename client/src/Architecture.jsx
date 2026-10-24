@@ -13,11 +13,11 @@ const STEPS = [
   },
   {
     title: "Bedrock reads the night",
-    text: "Amazon Bedrock calls three tools: clinic status, the patients who need a decision, and the vans and roads. The tools are the source of truth.",
+    text: "Amazon Bedrock uses tools to read the night. It must call three read tools before it can act: get_clinic_status, get_patients_requiring_placement, and get_transport_and_roads. The tools are the source of truth.",
   },
   {
     title: "Bedrock writes the plan",
-    text: "The model submits who moves, who finishes on the machine, which van, and why. It also writes the messages for patients, drivers, and charge nurses.",
+    text: "Bedrock calls submit_plan once with who moves, who finishes on the machine, which van, and why. It also writes the messages for patients, drivers, and charge nurses.",
   },
   {
     title: "The service checks the plan",
@@ -25,7 +25,7 @@ const STEPS = [
   },
   {
     title: "Naomi approves",
-    text: "Nothing is sent until Naomi Brooks approves it. The decision is stored with the Bedrock request id.",
+    text: "A human makes the final call. Nothing is sent until Naomi Brooks approves the plan. The approved decision is stored with the Bedrock request id.",
   },
 ];
 

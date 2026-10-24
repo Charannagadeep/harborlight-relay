@@ -42,3 +42,11 @@ The slide in the room said the video is due at 11:00 a.m. Saturday, uploaded to 
 ## Team
 
 Send the other four GitHub usernames and they will be added to the repo.
+
+## Kiro build note
+
+Kiro was used on this project to tighten the documentation and the architecture view without changing the runtime behavior.
+
+- **Persona.** Naomi Brooks, continuity manager at Harborlight Dialysis. She owns six clinics and 420 patients and approves or rejects every plan. Relay never moves a patient on its own.
+- **Bedrock tools.** Amazon Bedrock is the planner. It must call three read tools before it can act: `get_clinic_status` (power, water, road, generator fuel, open chairs), `get_patients_requiring_placement` (everyone who needs a decision, including people on a machine), and `get_transport_and_roads` (van seats, shuttle limits, closed roads). It then calls `submit_plan` exactly once.
+- **Safety gate.** The plan is validated in code (`server/safety.js`). It rejects any unsafe assignment: sending someone to a dark clinic or a closed road, overfilling a chair, spending a van seat that does not exist, putting an ambulatory patient in a van, or keeping a patient on a machine the generator cannot cover. If the model cannot repair a rejected plan, a deterministic rules engine places the night and the log says so. Nothing is sent until Naomi approves it.
