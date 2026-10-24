@@ -368,9 +368,11 @@ export function Film({ onExit }) {
       <div className="poster">
         <Atmosphere />
         <div className="poster-copy">
-          <p className="eyebrow">Harborlight Dialysis</p>
+          <p className="eyebrow">Video take · sound on</p>
           <h1>Relay</h1>
-          <button className="btn" onClick={async () => { await sound.start(); setArmed(true); }}>Begin the night</button>
+          <p className="deck">This mode is for recording the demo. Work the night on the silent desk instead.</p>
+          <button className="btn" onClick={async () => { await sound.start(); setArmed(true); }}>Start the film</button>
+          <button className="btn ghost" onClick={onExit}>Back</button>
         </div>
       </div>
     );

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { getJSON } from "./api";
-import { sound } from "./audio";
 import { Atmosphere } from "./Rain";
 import { Film } from "./Film";
 import { Desk } from "./Desk";
@@ -54,18 +53,18 @@ export default function App() {
       <div className="poster-copy">
         <p className="eyebrow">Harborlight Dialysis · Continuity desk</p>
         <h1>Relay</h1>
-        <p className="deck">When the clinics close, no one misses a treatment.</p>
+        <p className="deck">You run the night. Bedrock drafts. You decide.</p>
         <p className="who">
-          Naomi Brooks is the continuity manager on call. Six clinics. Four hundred and twenty patients.
-          At 2:14 a.m. the harbor starts to flood, and the morning chairs are already promised.
+          You are Naomi Brooks, continuity manager on call. Six clinics. Four hundred and twenty patients.
+          Load the flood, change clinic power and roads, give Bedrock your orders, then keep or send back every move.
         </p>
         <div className="row">
-          <button className="btn" onClick={async () => { await sound.start(); go("film"); }}>Begin the night</button>
-          <button className="btn ghost" onClick={() => go("desk")}>Open the desk</button>
+          <button className="btn" onClick={() => go("desk")}>Work the night</button>
           <button className="btn ghost" onClick={() => go("arch")}>Architecture</button>
+          <button className="btn ghost" onClick={() => go("film")}>Film for video</button>
         </div>
-        <p className="fine">Sound on. Headphones if you have them. Fictional patients. A person approves every move.</p>
-        {health?.ok && <p className="fine">Amazon Bedrock is planning the night.</p>}
+        <p className="fine">The desk is silent. Film mode is only for recording the demo video (sound on).</p>
+        {health?.ok && <p className="fine">Amazon Bedrock is ready to plan with you.</p>}
         {health && !health.ok && <p className="warn-line">Bedrock is not answering yet. {health.message}</p>}
       </div>
     </div>

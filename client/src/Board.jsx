@@ -15,15 +15,20 @@ export function Board({
   feed,
   trace,
   plan,
+  kept = [],
   revealed = 0,
   flood = 0,
   clock,
   approved,
   showApprove,
   onApprove,
+  onKeep,
+  onSendBack,
+  onRejectPlan,
   running,
   warning,
   mode = "people",
+  onMode,
 }) {
   const scroller = useRef(null);
   const shown = plan ? plan.assignments.slice(0, revealed) : [];
@@ -31,8 +36,9 @@ export function Board({
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [shown.length, trace.length, feed.length]);
 
-  const transfers = shown.filter((item) => item.action === "transfer").length;
-  const finishes = shown.filter((item) => item.action === "finish-on-machine").length;
+  const keptRows = shown.filter((item) => kept.includes(item.patientId));
+  const transfers = keptRows.filter((item) => item.action === "transfer").length;
+  const finishes = keptRows.filter((item) => item.action === "finish-on-machine").length;
 
   return (
     <section className="board">
@@ -42,17 +48,29 @@ export function Board({
           <h2>Continuity desk</h2>
         </div>
         <div className="head-meta">
-          <span>Naomi Brooks · on call</span>
+          <span>You are Naomi Brooks · on call</span>
           <strong>{formatClock(clock)}</strong>
         </div>
       </header>
       <div className="map-panel">
-        <Map clinics={clinics} patients={patients} assignments={shown} flood={flood} />
+        <Map
+          clinics={clinics}
+          patients={patients}
+          assignments={shown.filter((item) => kept.includes(item.patientId))}
+          flood={flood}
+        />
       </div>
       <aside className="side" ref={scroller}>
+        {onMode && (
+          <div className="panel-tabs">
+            <button className={mode === "people" ? "active" : ""} onClick={() => onMode("people")} type="button">Patients</button>
+            <button className={mode === "trace" ? "active" : ""} onClick={() => onMode("trace")} type="button" disabled={!trace.length && !running}>Bedrock</button>
+            <button className={mode === "plan" ? "active" : ""} onClick={() => onMode("plan")} type="button" disabled={!plan}>Your review</button>
+          </div>
+        )}
         <div className="feed">
           <p className="eyebrow">Incoming</p>
-          {feed.length === 0 && <p className="quiet-line">The board is green.</p>}
+          {feed.length === 0 && <p className="quiet-line">Load the flood or flip clinic power to start the night.</p>}
           {feed.map((item) => (
             <article key={item.id} className="feed-item">
               <p className="feed-meta">{item.at} · {item.source}</p>
@@ -63,14 +81,14 @@ export function Board({
         {mode === "trace" && (
           <div className="trace">
             <p className="eyebrow">Amazon Bedrock</p>
-            {trace.length === 0 && <p className="quiet-line">Relay is reading the night.</p>}
+            {trace.length === 0 && <p className="quiet-line">Ask Bedrock for a draft when you are ready.</p>}
             {trace.map((item, index) => (
               <article key={`${item.name}-${index}`} className="trace-item">
                 <code>{item.name}</code>
                 <p>{item.summary}</p>
               </article>
             ))}
-            {running && <p className="quiet-line">On the line with Bedrock…</p>}
+            {running && <p className="quiet-line">Bedrock is drafting. You approve nothing yet.</p>}
           </div>
         )}
         {mode === "people" && (
@@ -89,19 +107,29 @@ export function Board({
         )}
         {mode === "plan" && plan && (
           <div className="plan">
-            <p className="eyebrow">{plan.source === "bedrock" ? "Planned by Amazon Bedrock" : "Placed by the safety rules"}</p>
+            <p className="eyebrow">{plan.source === "bedrock" ? "Draft from Amazon Bedrock" : "Draft from the safety rules"}</p>
             <p className="summary">{plan.summary}</p>
-            <p className="counts">{transfers} moving · {finishes} finishing on the machine</p>
-            {shown.map((assignment) => (
-              <article key={assignment.patientId} className="assign">
-                <div>
-                  <strong>{assignment.patientName}</strong>
-                  <span>{assignment.fromClinicName} → {assignment.toClinicName}</span>
-                </div>
-                <em>{assignment.action === "finish-on-machine" ? "Finish on the machine" : prettyRide(assignment.transport)}</em>
-                <p>{assignment.reason}</p>
-              </article>
-            ))}
+            <p className="counts">{kept.length} kept · {transfers} moving · {finishes} finishing · {shown.length - kept.length} sent back</p>
+            {shown.map((assignment) => {
+              const isKept = kept.includes(assignment.patientId);
+              return (
+                <article key={assignment.patientId} className={`assign ${isKept ? "kept" : "sent-back"}`}>
+                  <div>
+                    <strong>{assignment.patientName}</strong>
+                    <span>{assignment.fromClinicName} → {assignment.toClinicName}</span>
+                  </div>
+                  <em>{assignment.action === "finish-on-machine" ? "Finish on the machine" : prettyRide(assignment.transport)}</em>
+                  <p>{assignment.reason}</p>
+                  {!approved && onKeep && onSendBack && (
+                    <div className="assign-actions">
+                      <button type="button" className={`btn tiny ${isKept ? "" : "ghost"}`} onClick={() => onKeep(assignment.patientId)}>Keep</button>
+                      <button type="button" className={`btn tiny ghost ${isKept ? "" : ""}`} onClick={() => onSendBack(assignment)}>Send back</button>
+                    </div>
+                  )}
+                  {!isKept && !approved && <p className="quiet-line">Sent back · will not go out on approval</p>}
+                </article>
+              );
+            })}
             {revealed >= plan.assignments.length && (
               <>
                 <p className="tradeoff">{plan.tradeoff}</p>
@@ -116,17 +144,20 @@ export function Board({
                 {plan.modelId && <p className="model-id">{plan.modelId}{plan.requestId ? ` · ${plan.requestId}` : ""}</p>}
               </>
             )}
-            {showApprove && !approved && (
-              <button className="btn approve" onClick={onApprove}>Approve the plan</button>
+            {!approved && (
+              <div className="plan-actions">
+                {showApprove && <button className="btn approve" onClick={onApprove}>Approve kept moves ({kept.length})</button>}
+                {onRejectPlan && <button className="btn ghost" type="button" onClick={onRejectPlan}>Reject whole draft</button>}
+              </div>
             )}
-            {approved && <p className="stamp">Approved · Naomi Brooks</p>}
+            {approved && <p className="stamp">Approved · Naomi Brooks · {kept.length} moves</p>}
           </div>
         )}
         {warning && <p className="warn-line">{warning}</p>}
       </aside>
       <footer className="board-foot">
-        <span>6 clinics · 420 patients on the service · 13 in this decision</span>
-        <span>Fictional night. A person approves every move.</span>
+        <span>You set the clinics. Bedrock drafts. You keep or send back every move.</span>
+        <span>Fictional night. Silent desk.</span>
       </footer>
     </section>
   );

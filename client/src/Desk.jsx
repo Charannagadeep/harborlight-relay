@@ -3,79 +3,154 @@ import { crisisClinics, FEED, patients, quietClinics } from "@shared/world.js";
 import { approvePlan, runRelay } from "./api";
 import { Board } from "./Board";
 
+const DEFAULT_NOTES = FEED.map((item) => `${item.at} ${item.source}: ${item.text}`).join("\n");
+
 export function Desk({ onFilm, onArch, onHome }) {
   const people = patients();
   const [clinics, setClinics] = useState(() => quietClinics());
   const [feed, setFeed] = useState([]);
-  const [notes, setNotes] = useState(FEED.map((item) => `${item.at} ${item.source}: ${item.text}`).join("\n"));
+  const [notes, setNotes] = useState(DEFAULT_NOTES);
   const [trace, setTrace] = useState([]);
   const [plan, setPlan] = useState(null);
+  const [kept, setKept] = useState([]);
   const [running, setRunning] = useState(false);
   const [approved, setApproved] = useState(false);
   const [warning, setWarning] = useState("");
   const [custom, setCustom] = useState(false);
-  const [editor, setEditor] = useState(false);
+  const [editor, setEditor] = useState(true);
+  const [panel, setPanel] = useState("people");
   const clock = feed.length ? 2 * 3600 + 26 * 60 : 2 * 3600 + 14 * 60;
 
   function loadFlood() {
     setClinics(crisisClinics());
     setFeed(FEED);
+    setNotes(DEFAULT_NOTES);
     setCustom(false);
     setPlan(null);
+    setKept([]);
     setTrace([]);
     setApproved(false);
     setWarning("");
+    setPanel("people");
+    setEditor(true);
+  }
+
+  function resetQuiet() {
+    setClinics(quietClinics());
+    setFeed([]);
+    setNotes(DEFAULT_NOTES);
+    setCustom(false);
+    setPlan(null);
+    setKept([]);
+    setTrace([]);
+    setApproved(false);
+    setWarning("");
+    setPanel("people");
   }
 
   function updateClinic(id, fields) {
     setCustom(true);
+    setPlan(null);
+    setKept([]);
+    setApproved(false);
     setClinics((list) => list.map((clinic) => (clinic.id === id ? { ...clinic, ...fields } : clinic)));
   }
 
   async function planNight() {
-    if (!custom) {
+    if (!custom && !feed.length) {
       setClinics(crisisClinics());
       setFeed(FEED);
     }
     setRunning(true);
     setPlan(null);
+    setKept([]);
     setTrace([]);
     setApproved(false);
     setWarning("");
+    setPanel("trace");
     let finalPlan = null;
+    const useCustom = custom || notes.trim() !== DEFAULT_NOTES;
     try {
-      await runRelay(custom ? { mode: "custom", clinics, notes } : { mode: "tonight" }, (event, data) => {
-        if (event === "tool") setTrace((current) => [...current, data]);
-        if (event === "repair") setWarning(data.errors?.[0] || "Correcting the plan.");
-        if (event === "status" && data.message) setWarning(data.message);
-        if (event === "plan") finalPlan = data.plan;
-        if (event === "error") setWarning(data.message);
-      });
+      await runRelay(
+        useCustom ? { mode: "custom", clinics: custom || feed.length ? clinics : crisisClinics(), notes } : { mode: "tonight" },
+        (event, data) => {
+          if (event === "tool") setTrace((current) => [...current, data]);
+          if (event === "repair") setWarning(data.errors?.[0] || "Correcting the plan.");
+          if (event === "status" && data.message) setWarning(data.message);
+          if (event === "plan") finalPlan = data.plan;
+          if (event === "error") setWarning(data.message);
+        },
+      );
       if (!finalPlan) throw new Error("No plan came back.");
       setPlan(finalPlan);
+      setKept(finalPlan.assignments.map((item) => item.patientId));
       if (!feed.length) setFeed(FEED);
+      setPanel("plan");
+      setWarning("Review every move. Keep what you want. Send the rest back with new orders.");
     } catch (error) {
       setWarning(error.message);
+      setPanel("people");
     } finally {
       setRunning(false);
     }
   }
 
-  async function approve() {
-    if (!plan) return;
-    setApproved(true);
-    try { await approvePlan(plan); } catch { /* shown locally */ }
+  function keepAssignment(patientId) {
+    setKept((current) => (current.includes(patientId) ? current : [...current, patientId]));
   }
 
-  const mode = running ? "trace" : plan ? "plan" : "people";
+  function sendBack(assignment) {
+    setKept((current) => current.filter((id) => id !== assignment.patientId));
+    const line = `Naomi: send ${assignment.patientName} back. Do not use ${assignment.toClinicName} for them. Suggest another safe option.`;
+    setNotes((text) => (text.includes(line) ? text : `${text.trim()}\n${line}`));
+    setCustom(true);
+    setWarning(`${assignment.patientName} sent back. Add orders if you want, then plan again.`);
+  }
+
+  function rejectPlan() {
+    if (!plan) return;
+    setNotes((text) => `${text.trim()}\nNaomi: reject the whole plan. Rebuild with the clinic state and orders above.`);
+    setCustom(true);
+    setPlan(null);
+    setKept([]);
+    setApproved(false);
+    setPanel("people");
+    setWarning("Plan rejected. Change clinics or your orders, then ask Bedrock again.");
+  }
+
+  async function approve() {
+    if (!plan || !kept.length) return;
+    const assignments = plan.assignments.filter((item) => kept.includes(item.patientId));
+    const dropped = plan.assignments.filter((item) => !kept.includes(item.patientId));
+    const next = {
+      ...plan,
+      assignments,
+      unplaced: [
+        ...(plan.unplaced || []),
+        ...dropped.map((item) => ({
+          patientId: item.patientId,
+          name: item.patientName,
+          reason: "Naomi sent this move back before approval.",
+        })),
+      ],
+      summary: `${assignments.length} moves kept by Naomi. ${dropped.length} sent back.`,
+    };
+    setPlan(next);
+    setApproved(true);
+    setWarning("");
+    try { await approvePlan(next); } catch { /* shown locally */ }
+  }
+
+  const mode = running ? "trace" : panel;
+  const revealed = plan ? plan.assignments.length : 0;
 
   return (
     <div className="desk-shell">
       <div className="topbar">
         <button className="text" onClick={onHome}>Relay</button>
         <div className="row">
-          <button className="btn" onClick={onFilm}>Play the night</button>
           <button className="btn ghost" onClick={onArch}>Architecture</button>
+          <button className="btn ghost" onClick={onFilm}>Film for video</button>
         </div>
       </div>
       <div className="desk-frame">
@@ -85,31 +160,74 @@ export function Desk({ onFilm, onArch, onHome }) {
           feed={feed}
           trace={trace}
           plan={plan}
-          revealed={plan ? plan.assignments.length : 0}
+          kept={kept}
+          revealed={revealed}
           flood={feed.some((item) => item.id === "wx" || item.id === "custom") ? 1 : 0}
           clock={clock}
           approved={approved}
-          showApprove={Boolean(plan) && !approved}
+          showApprove={Boolean(plan) && !approved && kept.length > 0}
           onApprove={approve}
+          onKeep={keepAssignment}
+          onSendBack={sendBack}
+          onRejectPlan={rejectPlan}
           running={running}
           warning={warning}
           mode={mode}
+          onMode={setPanel}
         />
       </div>
       <div className="desk-controls">
-        <button className="btn" onClick={loadFlood}>Load the Tuesday flood</button>
-        <button className="btn" onClick={planNight} disabled={running}>{running ? "Relay is planning…" : "Plan with Bedrock"}</button>
-        <button className="btn ghost" onClick={() => setEditor((value) => !value)}>{editor ? "Hide clinic controls" : "Adjust the clinics"}</button>
+        <button className="btn" onClick={loadFlood}>1. Load the Tuesday flood</button>
+        <button className="btn ghost" onClick={resetQuiet}>Reset to quiet night</button>
+        <button className="btn" onClick={planNight} disabled={running}>
+          {running ? "Bedrock is drafting…" : plan ? "3. Ask Bedrock again" : "3. Ask Bedrock for a draft"}
+        </button>
+        <button className="btn ghost" onClick={() => setEditor((value) => !value)}>
+          {editor ? "Hide your controls" : "2. Show your controls"}
+        </button>
       </div>
       {editor && (
-        <div className="editor">
+        <div className="editor interactive-editor">
+          <div className="orders">
+            <p className="eyebrow">Your orders to Bedrock</p>
+            <p className="quiet-line">Write what you want. Bedrock drafts from this. You still keep or send back every move.</p>
+            <textarea
+              value={notes}
+              onChange={(event) => {
+                setNotes(event.target.value);
+                setCustom(true);
+                setApproved(false);
+              }}
+              rows={6}
+              placeholder="Example: Keep Patrick at Eastbank only if fuel allows. Prefer Main for wheelchair vans."
+            />
+          </div>
           {clinics.map((clinic) => (
             <div key={clinic.id} className="clinic-edit">
               <strong>{clinic.short}</strong>
               <label><input type="checkbox" checked={clinic.power} onChange={(event) => updateClinic(clinic.id, { power: event.target.checked })} /> Power</label>
               <label><input type="checkbox" checked={clinic.water} onChange={(event) => updateClinic(clinic.id, { water: event.target.checked })} /> Water</label>
               <label><input type="checkbox" checked={clinic.generator} onChange={(event) => updateClinic(clinic.id, { generator: event.target.checked, generatorMinutes: clinic.generatorMinutes || 40 })} /> Generator</label>
-              <label>Fuel min <input type="number" min="0" max="600" value={clinic.generatorMinutes} onChange={(event) => updateClinic(clinic.id, { generator: true, generatorMinutes: Number(event.target.value) })} /></label>
+              <label>
+                Fuel min
+                <input
+                  type="number"
+                  min="0"
+                  max="600"
+                  value={clinic.generatorMinutes}
+                  onChange={(event) => updateClinic(clinic.id, { generator: true, generatorMinutes: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                Open chairs
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={clinic.openChairs}
+                  onChange={(event) => updateClinic(clinic.id, { openChairs: Number(event.target.value) })}
+                />
+              </label>
               <label>
                 Road
                 <select value={clinic.road} onChange={(event) => updateClinic(clinic.id, { road: event.target.value })}>
@@ -120,7 +238,6 @@ export function Desk({ onFilm, onArch, onHome }) {
               </label>
             </div>
           ))}
-          <textarea value={notes} onChange={(event) => { setNotes(event.target.value); setCustom(true); }} rows={5} />
         </div>
       )}
     </div>
