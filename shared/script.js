@@ -1,0 +1,51 @@
+export const LINES = [
+  {
+    id: "open1",
+    speaker: "",
+    voice: "Matthew",
+    radio: false,
+    text: "Harbor City. Tuesday. Six dialysis clinics, four hundred and twenty patients, and one person on the continuity desk.",
+  },
+  {
+    id: "open2",
+    speaker: "",
+    voice: "Matthew",
+    radio: false,
+    text: "It is 2:14 in the morning. Naomi Brooks is on call. Most nights, every clinic stays green.",
+  },
+  {
+    id: "weather",
+    speaker: "Weather service",
+    voice: "Matthew",
+    radio: false,
+    text: "Coastal flood warning. The Pier and South Wharf will lose their roads.",
+  },
+  {
+    id: "pier",
+    speaker: "Alicia Moore, Pier Clinic",
+    voice: "Joanna",
+    radio: true,
+    text: "Pier to continuity. Water is at the loading dock. I shut the treatment floor down. No one is on a machine. My 5:30 patients cannot come here.",
+  },
+  {
+    id: "east",
+    speaker: "Chris Daley, Eastbank",
+    voice: "Gregory",
+    radio: true,
+    text: "Eastbank. Utility power is out. The generator is up, about forty minutes of fuel. Four patients are on machines. Three can finish. Patrick Nguyen cannot.",
+  },
+  {
+    id: "wharf",
+    speaker: "South Wharf alarm",
+    voice: "Matthew",
+    radio: false,
+    text: "South Wharf has lost city water. The treatment system is down. The clinic is closed.",
+  },
+  {
+    id: "roads",
+    speaker: "Priya Shah, roads desk",
+    voice: "Stephen",
+    radio: true,
+    text: "Pier road is closed. The South Wharf bridge is closed. Main and North Ridge are clear. Cedar Grove is high vans only. You have two wheelchair vans. There is no stretcher.",
+  },
+];
