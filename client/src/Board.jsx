@@ -29,6 +29,8 @@ export function Board({
   warning,
   mode = "people",
   onMode,
+  canNotify = false,
+  notifyPanel = null,
 }) {
   const scroller = useRef(null);
   const shown = plan ? plan.assignments.slice(0, revealed) : [];
@@ -66,6 +68,7 @@ export function Board({
             <button className={mode === "people" ? "active" : ""} onClick={() => onMode("people")} type="button">Patients</button>
             <button className={mode === "trace" ? "active" : ""} onClick={() => onMode("trace")} type="button" disabled={!trace.length && !running}>Bedrock</button>
             <button className={mode === "plan" ? "active" : ""} onClick={() => onMode("plan")} type="button" disabled={!plan}>Your review</button>
+            {notifyPanel && <button className={mode === "notify" ? "active" : ""} onClick={() => onMode("notify")} type="button" disabled={!canNotify}>Notify</button>}
           </div>
         )}
         <div className="feed">
@@ -151,8 +154,12 @@ export function Board({
               </div>
             )}
             {approved && <p className="stamp">Approved · Naomi Brooks · {kept.length} moves</p>}
+            {approved && notifyPanel && onMode && (
+              <button className="btn" type="button" onClick={() => onMode("notify")}>Notify patients →</button>
+            )}
           </div>
         )}
+        {mode === "notify" && notifyPanel}
         {warning && <p className="warn-line">{warning}</p>}
       </aside>
       <footer className="board-foot">

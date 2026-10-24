@@ -5,6 +5,7 @@ export function clone(value) {
 const CLINICS = [
   {
     id: "main",
+    address: "410 Harbor Avenue, Harbor City",
     name: "Harborlight Main",
     short: "Main",
     nurse: "Receiving desk",
@@ -24,6 +25,7 @@ const CLINICS = [
   },
   {
     id: "ridge",
+    address: "88 Ridgeline Road, Harbor City",
     name: "North Ridge",
     short: "North Ridge",
     nurse: "Receiving desk",
@@ -43,6 +45,7 @@ const CLINICS = [
   },
   {
     id: "cedar",
+    address: "1270 Cedar Grove Parkway, Harbor City",
     name: "Cedar Grove",
     short: "Cedar Grove",
     nurse: "Receiving desk",
@@ -62,6 +65,7 @@ const CLINICS = [
   },
   {
     id: "eastbank",
+    address: "35 Eastbank Street, Harbor City",
     name: "Eastbank",
     short: "Eastbank",
     nurse: "Chris Daley",
@@ -81,6 +85,7 @@ const CLINICS = [
   },
   {
     id: "pier",
+    address: "2 Pier Way, Harbor City",
     name: "Pier Clinic",
     short: "Pier",
     nurse: "Alicia Moore",
@@ -100,6 +105,7 @@ const CLINICS = [
   },
   {
     id: "wharf",
+    address: "600 South Wharf Road, Harbor City",
     name: "South Wharf",
     short: "South Wharf",
     nurse: "Night alarm",
@@ -125,15 +131,28 @@ const PEOPLE = [
   { id: "dorothy", name: "Dorothy Lang", age: 74, hoursSince: 51, mobility: "wheelchair", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
   { id: "samuel", name: "Samuel Price", age: 61, hoursSince: 49, mobility: "ambulatory", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
   { id: "ruth", name: "Ruth Abebe", age: 69, hoursSince: 48, mobility: "ambulatory", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
-  { id: "luis", name: "Luis Ortega", age: 55, hoursSince: 47, mobility: "wheelchair", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
-  { id: "helenp", name: "Helen Park", age: 72, hoursSince: 46, mobility: "ambulatory", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
+  { id: "luis", language: "es", name: "Luis Ortega", age: 55, hoursSince: 47, mobility: "wheelchair", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
+  { id: "helenp", language: "ko", name: "Helen Park", age: 72, hoursSince: 46, mobility: "ambulatory", homeClinic: "pier", status: "due", minutesRemaining: null, window: "5:30 a.m." },
   { id: "frank", name: "Frank Odell", age: 63, hoursSince: 44, mobility: "ambulatory", homeClinic: "wharf", status: "due", minutesRemaining: null, window: "6:00 a.m." },
-  { id: "grace", name: "Grace Ibrahim", age: 68, hoursSince: 43, mobility: "wheelchair", homeClinic: "wharf", status: "due", minutesRemaining: null, window: "6:00 a.m." },
+  { id: "grace", language: "es", name: "Grace Ibrahim", age: 68, hoursSince: 43, mobility: "wheelchair", homeClinic: "wharf", status: "due", minutesRemaining: null, window: "6:00 a.m." },
   { id: "patrick", name: "Patrick Nguyen", age: 70, hoursSince: 6, mobility: "ambulatory", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 55, window: "On the machine" },
   { id: "andre", name: "Andre Wallace", age: 58, hoursSince: 5, mobility: "ambulatory", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 22, window: "On the machine" },
-  { id: "helencho", name: "Helen Cho", age: 64, hoursSince: 5, mobility: "wheelchair", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 16, window: "On the machine" },
+  { id: "helencho", language: "ko", name: "Helen Cho", age: 64, hoursSince: 5, mobility: "wheelchair", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 16, window: "On the machine" },
   { id: "camille", name: "Camille Brooks", age: 49, hoursSince: 4, mobility: "ambulatory", homeClinic: "eastbank", status: "on-machine", minutesRemaining: 11, window: "On the machine" },
 ];
+
+// Fictional callback line every patient message must include.
+export const HOTLINE = "(555) 014-2200";
+
+export const LANGUAGES = {
+  en: { name: "English", voice: "Joanna" },
+  es: { name: "Spanish", voice: "Lupe" },
+  ko: { name: "Korean", voice: "Seoyeon" },
+};
+
+export function patientLanguage(patient) {
+  return LANGUAGES[patient?.language] ? patient.language : "en";
+}
 
 export const FEED = [
   {

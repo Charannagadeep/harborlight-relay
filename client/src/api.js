@@ -5,13 +5,32 @@ export async function getJSON(url) {
 }
 
 export async function runRelay(body, onEvent) {
-  const response = await fetch("/api/relay", {
+  return streamEvents("/api/relay", body, onEvent);
+}
+
+export async function draftNotifications(body, onEvent) {
+  return streamEvents("/api/notify/draft", body, onEvent);
+}
+
+export async function sendNotifications(body) {
+  const response = await fetch("/api/notify/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Messages did not send");
+  return data;
+}
+
+async function streamEvents(url, body, onEvent) {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!response.ok || !response.body) {
-    throw new Error((await response.text()) || "Relay did not answer");
+    throw new Error((await response.text()) || "The desk service did not answer");
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

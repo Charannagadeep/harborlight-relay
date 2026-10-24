@@ -1,7 +1,8 @@
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import { LINES } from "../shared/script.js";
 
-const VOICES = ["Matthew", "Joanna", "Gregory", "Stephen"];
+// Film voices plus one neural voice per patient language (en, es, ko).
+const VOICES = ["Matthew", "Joanna", "Gregory", "Stephen", "Lupe", "Seoyeon"];
 
 export function createPolly(region) {
   const client = new PollyClient({ region });

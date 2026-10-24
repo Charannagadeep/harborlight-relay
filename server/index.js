@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import { createBedrock } from "./bedrock.js";
 import { createPolly } from "./polly.js";
+import { createNotifier } from "./notify.js";
+import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import { crisisWorld, patients, quietClinics, transport } from "../shared/world.js";
 
 const REGION = process.env.AWS_DEFAULT_REGION || process.env.AWS_REGION || "us-east-1";
@@ -9,6 +11,11 @@ const PORT = Number(process.env.PORT || 8787);
 const app = express();
 const bedrock = createBedrock(REGION);
 const polly = createPolly(REGION);
+const notifier = createNotifier(REGION, {
+  runtime: new BedrockRuntimeClient({ region: REGION }),
+  polly,
+  getModelId: () => bedrock.whenReady(),
+});
 const log = [];
 
 app.use(cors());
@@ -110,6 +117,52 @@ app.post("/api/approve", (req, res) => {
   };
   log.unshift(entry);
   res.json(entry);
+});
+
+// Bedrock drafts one message per approved move. Streams progress like /api/relay.
+app.post("/api/notify/draft", async (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const ping = setInterval(() => res.write(`: ping\n\n`), 4000);
+  try {
+    const plan = req.body?.plan;
+    if (!plan?.assignments?.length) throw new Error("Approve at least one move before notifying patients.");
+    const world = worldFromBody(req.body || {});
+    const result = await notifier.draft(plan, world, { onEvent: send });
+    send("messages", result);
+  } catch (error) {
+    send("error", { message: error.message || "Drafting failed" });
+  } finally {
+    clearInterval(ping);
+    res.end();
+  }
+});
+
+// Naomi approved these messages. Email through SES, voice through Polly.
+app.post("/api/notify/send", async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.messages) ? req.body.messages.slice(0, 40) : [];
+    if (!items.length) return res.status(400).json({ message: "No messages to send." });
+    const clean = items.map((item) => ({
+      patientId: String(item.patientId || ""),
+      subject: String(item.subject || "").slice(0, 200),
+      body: String(item.body || "").slice(0, 2000),
+      voiceScript: String(item.voiceScript || "").slice(0, 1500),
+      source: item.source === "template" ? "template" : item.edited ? "edited" : "bedrock",
+    }));
+    const result = await notifier.send(clean, worldFromBody(req.body || {}));
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message || "Sending failed" });
+  }
+});
+
+app.get("/api/notify/log", (_req, res) => {
+  res.json({ log: notifier.log() });
 });
 
 app.get("/api/log", (_req, res) => {

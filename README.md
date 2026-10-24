@@ -86,6 +86,17 @@ If Bedrock cannot repair a rejected plan, a deterministic **rules** fallback pla
 
 Nothing is treated as final until you approve. Keep/send-back edits are stored with the approval log in memory (`POST /api/approve`).
 
+### Patient notifications (Bedrock + SES + Polly)
+
+After Naomi approves, the **Notify** tab turns each kept move into a message to the person who has to act on it:
+
+1. **Bedrock drafts** one message per patient, in their language (English, Spanish, Korean), through a required `submit_messages` tool. People finishing on the machine get a message to their emergency contact instead.
+2. **Code checks every message** (`server/notify.js`, `checkMessages`): right clinic, leave-by time, hotline number, "do not go to" the closed clinic, and no medical advice. Failures go back to Bedrock as tool errors for repair; if it still fails, a plain template is shown and labeled.
+3. **Naomi reads, edits, and unticks** any message before it goes.
+4. **Amazon SES** emails the approved messages and **Amazon Polly** renders each one as a voice call in the matching neural voice (Joanna, Lupe, Seoyeon).
+
+Set `SES_FROM` and `NOTIFY_TO` in `.env` (both verified in SES) to send for real. In SES sandbox every fictional patient is routed to `NOTIFY_TO` with a plus tag, for example `you+irene@gmail.com`. Leave `NOTIFY_TO` blank and sends are previewed only. Optional `GUARDRAIL_ID` applies a Bedrock guardrail to the drafts. Offline self-test: `npm run check:notify`.
+
 ### Amazon Polly (film only)
 
 Polly neural voices speak narrator and radio lines during **Film for video**. The silent desk does not play them.
