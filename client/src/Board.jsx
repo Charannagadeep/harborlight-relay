@@ -38,7 +38,10 @@ export function Board({
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [shown.length, trace.length, feed.length]);
 
-  const keptRows = shown.filter((item) => kept.includes(item.patientId));
+  // Film mode has no keep/send-back handlers — treat every assignment as kept.
+  const interactive = Boolean(onKeep && onSendBack);
+  const activeIds = interactive ? kept : shown.map((item) => item.patientId);
+  const keptRows = shown.filter((item) => activeIds.includes(item.patientId));
   const transfers = keptRows.filter((item) => item.action === "transfer").length;
   const finishes = keptRows.filter((item) => item.action === "finish-on-machine").length;
 
@@ -58,7 +61,7 @@ export function Board({
         <Map
           clinics={clinics}
           patients={patients}
-          assignments={shown.filter((item) => kept.includes(item.patientId))}
+          assignments={shown.filter((item) => activeIds.includes(item.patientId))}
           flood={flood}
         />
       </div>
@@ -112,9 +115,13 @@ export function Board({
           <div className="plan">
             <p className="eyebrow">{plan.source === "bedrock" ? "Draft from Amazon Bedrock" : "Draft from the safety rules"}</p>
             <p className="summary">{plan.summary}</p>
-            <p className="counts">{kept.length} kept · {transfers} moving · {finishes} finishing · {shown.length - kept.length} sent back</p>
+            <p className="counts">
+              {interactive
+                ? `${kept.length} kept · ${transfers} moving · ${finishes} finishing · ${shown.length - kept.length} sent back`
+                : `${transfers} moving · ${finishes} finishing on the machine`}
+            </p>
             {shown.map((assignment) => {
-              const isKept = kept.includes(assignment.patientId);
+              const isKept = activeIds.includes(assignment.patientId);
               return (
                 <article key={assignment.patientId} className={`assign ${isKept ? "kept" : "sent-back"}`}>
                   <div>
@@ -123,13 +130,13 @@ export function Board({
                   </div>
                   <em>{assignment.action === "finish-on-machine" ? "Finish on the machine" : prettyRide(assignment.transport)}</em>
                   <p>{assignment.reason}</p>
-                  {!approved && onKeep && onSendBack && (
+                  {!approved && interactive && (
                     <div className="assign-actions">
                       <button type="button" className={`btn tiny ${isKept ? "" : "ghost"}`} onClick={() => onKeep(assignment.patientId)}>Keep</button>
-                      <button type="button" className={`btn tiny ghost ${isKept ? "" : ""}`} onClick={() => onSendBack(assignment)}>Send back</button>
+                      <button type="button" className="btn tiny ghost" onClick={() => onSendBack(assignment)}>Send back</button>
                     </div>
                   )}
-                  {!isKept && !approved && <p className="quiet-line">Sent back · will not go out on approval</p>}
+                  {interactive && !isKept && !approved && <p className="quiet-line">Sent back · will not go out on approval</p>}
                 </article>
               );
             })}
@@ -149,11 +156,15 @@ export function Board({
             )}
             {!approved && (
               <div className="plan-actions">
-                {showApprove && <button className="btn approve" onClick={onApprove}>Approve kept moves ({kept.length})</button>}
-                {onRejectPlan && <button className="btn ghost" type="button" onClick={onRejectPlan}>Reject whole draft</button>}
+                {showApprove && (
+                  <button className="btn approve" onClick={onApprove}>
+                    {interactive ? `Approve kept moves (${kept.length})` : "Approve the plan"}
+                  </button>
+                )}
+                {interactive && onRejectPlan && <button className="btn ghost" type="button" onClick={onRejectPlan}>Reject whole draft</button>}
               </div>
             )}
-            {approved && <p className="stamp">Approved · Naomi Brooks · {kept.length} moves</p>}
+            {approved && <p className="stamp">Approved · Naomi Brooks{interactive ? ` · ${kept.length} moves` : ""}</p>}
             {approved && notifyPanel && onMode && (
               <button className="btn" type="button" onClick={() => onMode("notify")}>Notify patients →</button>
             )}

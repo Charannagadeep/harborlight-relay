@@ -3,3 +3,14 @@ dist
 .env
 .DS_Store
 *.log
+demo/
+*.mp4
+*.webm
+*.mov
+page@*.webm
+relay-demo-audio.*
+relay-audio-bed.*
+line-*.mp3
+polly-voice.mp3
+rain.wav
+concat.txt

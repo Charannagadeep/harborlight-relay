@@ -13,22 +13,32 @@ export async function draftNotifications(body, onEvent) {
 }
 
 export async function sendNotifications(body) {
-  const response = await fetch("/api/notify/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch("/api/notify/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("The Relay server is offline. Start npm run dev, then try again.");
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || "Messages did not send");
   return data;
 }
 
 async function streamEvents(url, body, onEvent) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("The Relay server is offline. Start npm run dev, then press Skip to Bedrock.");
+  }
   if (!response.ok || !response.body) {
     throw new Error((await response.text()) || "The desk service did not answer");
   }

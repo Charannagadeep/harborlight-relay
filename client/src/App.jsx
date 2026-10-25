@@ -61,9 +61,9 @@ export default function App() {
         <div className="row">
           <button className="btn" onClick={() => go("desk")}>Work the night</button>
           <button className="btn ghost" onClick={() => go("arch")}>Architecture</button>
-          <button className="btn ghost" onClick={() => go("film")}>Film for video</button>
+          <button className="btn ghost" onClick={() => go("film")}>5-min demo film</button>
         </div>
-        <p className="fine">The desk is silent. Film mode is only for recording the demo video (sound on).</p>
+        <p className="fine">The desk is silent. Use the 5-minute demo film (sound + cartoons + Bedrock) when you record for judges.</p>
         {health?.ok && <p className="fine">Amazon Bedrock is ready to plan with you.</p>}
         {health && !health.ok && <p className="warn-line">Bedrock is not answering yet. {health.message}</p>}
       </div>
