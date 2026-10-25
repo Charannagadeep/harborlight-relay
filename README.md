@@ -105,6 +105,17 @@ If the model cannot repair, a deterministic **rules** fallback places the night 
 
 Nothing is final until `POST /api/approve`. Keep / send-back edits travel with the approval log.
 
+### Patient notifications (Bedrock + SES + Polly)
+
+After Naomi approves, the **Notify** tab turns each kept move into a message to the person who has to act on it:
+
+1. **Bedrock drafts** one message per patient, in their language (English, Spanish, Korean), through a required `submit_messages` tool. People finishing on the machine get a message to their emergency contact instead.
+2. **Code checks every message** (`server/notify.js`, `checkMessages`): right clinic, leave-by time, hotline number, "do not go to" the closed clinic, and no medical advice. Failures go back to Bedrock as tool errors for repair; if it still fails, a plain template is shown and labeled.
+3. **Naomi reads, edits, and unticks** any message before it goes.
+4. **Amazon SES** emails the approved messages and **Amazon Polly** renders each one as a voice call in the matching neural voice (Joanna, Lupe, Seoyeon).
+
+Set `SES_FROM` and `NOTIFY_TO` (both verified in SES) to send for real. In SES sandbox every fictional patient is routed to `NOTIFY_TO` with a plus tag, for example `you+irene@gmail.com`. Leave `NOTIFY_TO` blank and sends are previewed only.
+
 ---
 
 ## The Tuesday flood
@@ -139,11 +150,13 @@ harborlight-relay/
 | UI | React, Vite |
 | API | Express, SSE (`/api/relay`) |
 | Planning | `@aws-sdk/client-bedrock-runtime` tool use |
+| Notifications | Amazon SES email · Amazon Polly voice (`server/notify.js`) |
 | Voice (film) | Amazon Polly neural |
 | Builder | [Kiro](https://kiro.dev) CLI / IDE |
 
 ```bash
-npm run check   # safety self-test on the Tuesday plan
+npm run check         # safety self-test on the Tuesday plan
+npm run check:notify  # notification self-test (no AWS needed)
 npm run build   # client → dist/
 ```
 
@@ -160,6 +173,12 @@ AWS_SECRET_ACCESS_KEY=
 AWS_SESSION_TOKEN=
 # optional
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+# patient notifications (blank NOTIFY_TO = preview only)
+SES_FROM=
+NOTIFY_TO=
+NOTIFY_PLUS_TAGS=true
+GUARDRAIL_ID=
+GUARDRAIL_VERSION=
 ```
 
 ---

@@ -5,9 +5,33 @@ export async function getJSON(url) {
 }
 
 export async function runRelay(body, onEvent) {
+  return streamEvents("/api/relay", body, onEvent);
+}
+
+export async function draftNotifications(body, onEvent) {
+  return streamEvents("/api/notify/draft", body, onEvent);
+}
+
+export async function sendNotifications(body) {
   let response;
   try {
-    response = await fetch("/api/relay", {
+    response = await fetch("/api/notify/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("The Relay server is offline. Start npm run dev, then try again.");
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Messages did not send");
+  return data;
+}
+
+async function streamEvents(url, body, onEvent) {
+  let response;
+  try {
+    response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -16,7 +40,7 @@ export async function runRelay(body, onEvent) {
     throw new Error("The Relay server is offline. Start npm run dev, then press Skip to Bedrock.");
   }
   if (!response.ok || !response.body) {
-    throw new Error((await response.text()) || "Relay did not answer");
+    throw new Error((await response.text()) || "The desk service did not answer");
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

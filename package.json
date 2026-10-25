@@ -7,12 +7,14 @@
     "start": "node --env-file=.env server/index.js",
     "check": "node server/safety.js",
     "build": "vite build --config client/vite.config.js",
+    "check:notify": "node server/notify.check.js",
     "record:demo": "node scripts/record-demo.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.901.0",
     "@aws-sdk/client-bedrock-runtime": "^3.901.0",
     "@aws-sdk/client-polly": "^3.901.0",
+    "@aws-sdk/client-sesv2": "^3.901.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "react": "^19.1.0",

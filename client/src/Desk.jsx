@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { crisisClinics, FEED, patients, quietClinics } from "@shared/world.js";
-import { approvePlan, runRelay } from "./api";
+import { approvePlan, draftNotifications, runRelay, sendNotifications } from "./api";
 import { Board } from "./Board";
+import { Notify } from "./Notify";
 
 const DEFAULT_NOTES = FEED.map((item) => `${item.at} ${item.source}: ${item.text}`).join("\n");
 
@@ -19,9 +20,26 @@ export function Desk({ onFilm, onArch, onHome }) {
   const [custom, setCustom] = useState(false);
   const [editor, setEditor] = useState(true);
   const [panel, setPanel] = useState("people");
+  const [worldBody, setWorldBody] = useState({ mode: "tonight" });
+  const [drafts, setDrafts] = useState([]);
+  const [notifyTrace, setNotifyTrace] = useState([]);
+  const [notifyRunning, setNotifyRunning] = useState(false);
+  const [notifySource, setNotifySource] = useState("");
+  const [sending, setSending] = useState(false);
+  const [results, setResults] = useState({});
+  const [live, setLive] = useState(false);
   const clock = feed.length ? 2 * 3600 + 26 * 60 : 2 * 3600 + 14 * 60;
 
+  function clearNotify() {
+    setDrafts([]);
+    setNotifyTrace([]);
+    setNotifySource("");
+    setResults({});
+    setLive(false);
+  }
+
   function loadFlood() {
+    clearNotify();
     setClinics(crisisClinics());
     setFeed(FEED);
     setNotes(DEFAULT_NOTES);
@@ -36,6 +54,7 @@ export function Desk({ onFilm, onArch, onHome }) {
   }
 
   function resetQuiet() {
+    clearNotify();
     setClinics(quietClinics());
     setFeed([]);
     setNotes(DEFAULT_NOTES);
@@ -61,6 +80,7 @@ export function Desk({ onFilm, onArch, onHome }) {
       setClinics(crisisClinics());
       setFeed(FEED);
     }
+    clearNotify();
     setRunning(true);
     setPlan(null);
     setKept([]);
@@ -70,9 +90,11 @@ export function Desk({ onFilm, onArch, onHome }) {
     setPanel("trace");
     let finalPlan = null;
     const useCustom = custom || notes.trim() !== DEFAULT_NOTES;
+    const body = useCustom ? { mode: "custom", clinics: custom || feed.length ? clinics : crisisClinics(), notes } : { mode: "tonight" };
+    setWorldBody(body);
     try {
       await runRelay(
-        useCustom ? { mode: "custom", clinics: custom || feed.length ? clinics : crisisClinics(), notes } : { mode: "tonight" },
+        body,
         (event, data) => {
           if (event === "tool") setTrace((current) => [...current, data]);
           if (event === "repair") setWarning(data.errors?.[0] || "Correcting the plan.");
@@ -138,7 +160,71 @@ export function Desk({ onFilm, onArch, onHome }) {
     setPlan(next);
     setApproved(true);
     setWarning("");
+    setPanel("notify");
     try { await approvePlan(next); } catch { /* shown locally */ }
+  }
+
+  async function draftMessages() {
+    if (!plan || !approved) return;
+    setNotifyRunning(true);
+    setNotifyTrace([]);
+    setDrafts([]);
+    setResults({});
+    setWarning("");
+    let outcome = null;
+    try {
+      await draftNotifications({ ...worldBody, plan }, (event, data) => {
+        if (event === "tool") setNotifyTrace((current) => [...current, data]);
+        if (event === "repair") setNotifyTrace((current) => [...current, { name: "safety_check", summary: `Sent back to Bedrock: ${data.errors.slice(0, 2).join(" ")}${data.errors.length > 2 ? ` (+${data.errors.length - 2} more)` : ""}` }]);
+        if (event === "status" && data.message) setWarning(data.message);
+        if (event === "error") setWarning(data.message);
+        if (event === "messages") outcome = data;
+      });
+      if (!outcome) throw new Error("No messages came back.");
+      const people = Object.fromEntries((outcome.people || []).map((person) => [person.patientId, person]));
+      setNotifySource(outcome.source);
+      setDrafts(outcome.messages.map((message) => {
+        const person = people[message.patientId] || {};
+        const assignment = plan.assignments.find((item) => item.patientId === message.patientId) || {};
+        return {
+          ...message,
+          name: person.name || assignment.patientName || message.patientId,
+          language: person.language || "en",
+          audience: person.audience || "patient",
+          selected: true,
+          edited: false,
+        };
+      }));
+    } catch (error) {
+      setWarning(error.message);
+    } finally {
+      setNotifyRunning(false);
+    }
+  }
+
+  function editDraft(patientId, fields) {
+    setDrafts((list) => list.map((message) => (message.patientId === patientId ? { ...message, ...fields, edited: true } : message)));
+  }
+
+  function toggleDraft(patientId) {
+    setDrafts((list) => list.map((message) => (message.patientId === patientId ? { ...message, selected: !message.selected } : message)));
+  }
+
+  async function sendMessages() {
+    const chosen = drafts.filter((message) => message.selected && !results[message.patientId]);
+    if (!chosen.length) return;
+    setSending(true);
+    try {
+      const data = await sendNotifications({ ...worldBody, messages: chosen });
+      setLive(data.live);
+      setResults((current) => ({ ...current, ...Object.fromEntries(data.results.map((entry) => [entry.patientId, entry])) }));
+      const failed = data.results.filter((entry) => entry.channels.some((channel) => channel.status === "failed"));
+      setWarning(failed.length ? `${failed.length} message(s) had a delivery problem. See each card.` : "");
+    } catch (error) {
+      setWarning(error.message);
+    } finally {
+      setSending(false);
+    }
   }
 
   const mode = running ? "trace" : panel;
@@ -174,6 +260,23 @@ export function Desk({ onFilm, onArch, onHome }) {
           warning={warning}
           mode={mode}
           onMode={setPanel}
+          canNotify={approved}
+          notifyPanel={(
+            <Notify
+              approved={approved}
+              drafts={drafts}
+              trace={notifyTrace}
+              running={notifyRunning}
+              sending={sending}
+              results={results}
+              live={live}
+              source={notifySource}
+              onDraft={draftMessages}
+              onEdit={editDraft}
+              onToggle={toggleDraft}
+              onSend={sendMessages}
+            />
+          )}
         />
       </div>
       <div className="desk-controls">
